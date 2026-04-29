@@ -12,14 +12,16 @@ def get_cve_information(cve_id: str = None) -> tuple[str, str, list[str]]:
             start_index = random.randint(0, 345000)
             params = {"resultsPerPage": 1, "startIndex": start_index}
             
-        resp = requests.get(url, params=params, headers={"Accept": "application/json"}, timeout=10)
+        resp = requests.get(url, params=params, headers={"Accept": "application/json"}, timeout=60)
         resp.raise_for_status()
         data = resp.json()
-    except RequestException:
+    except RequestException as e:
+        print(f"Request failed for {cve_id}: {e}")
         return cve_id or "Unknown", "No-info", []
 
     vulnerabilities = data.get("vulnerabilities", [])
     if not vulnerabilities:
+        print(f"No vulnerabilities found for {cve_id}")
         return cve_id or "Unknown", "No-info", []
     
     cve_data = vulnerabilities[0].get("cve", {})
