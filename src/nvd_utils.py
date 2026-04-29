@@ -4,7 +4,7 @@ from requests.exceptions import RequestException
 def get_cve_information(cve_id: str) -> tuple[str, list[str]]:
     url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     try:
-        resp = requests.get(url, params={"cveId": cve_id}, timeout=10)
+        resp = requests.get(url, params={"cveId": cve_id}, timeout=20)
         resp.raise_for_status()
         data = resp.json()
     except RequestException:
