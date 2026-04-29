@@ -2,3 +2,5 @@ requests
 torch
 transformers
 tqdm
+scikit-learn
+matplotlib
