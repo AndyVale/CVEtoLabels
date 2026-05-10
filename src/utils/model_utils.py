@@ -33,7 +33,7 @@ def load_model(model_name: str, base_dir: str = "models"):
     
     return model, tokenizer, device
 
-def predict_labels(text: str, model, tokenizer, device, threshold: float = 0.5) -> list[str]:
+def predict_labels(text: str, model, tokenizer, device, threshold: float = 0.5, confidences=False) -> list[str]:
     """
     Predicts labels for a given text input using a loaded sequence classification model.
     
@@ -43,9 +43,10 @@ def predict_labels(text: str, model, tokenizer, device, threshold: float = 0.5) 
         tokenizer: The corresponding tokenizer.
         device: The PyTorch device (CPU or CUDA).
         threshold (float): Threshold for the multi-label sigmoid probabilities.
+        confidences (bool): If True, returns the confidence values for each label, otherwise returns thresholded labels only.
         
     Returns:
-        list[str]: A list of predicted labels.
+        list[str] or list[tuple]: A list of predicted labels or (label, confidence) pairs ordered by confidence.
     """
     if text == "No-info" or not text.strip():
         return []
@@ -69,15 +70,22 @@ def predict_labels(text: str, model, tokenizer, device, threshold: float = 0.5) 
     probs_1d = probabilities.squeeze(0)
     predicted_indices = (probs_1d > threshold).nonzero(as_tuple=True)[0]
     
-    labels = []
+    labels_with_conf = []
     if hasattr(model.config, "id2label") and getattr(model.config, "id2label", None):
         for idx in predicted_indices:
             idx_val = idx.item()
             label_name = model.config.id2label[idx_val]
-            labels.append(label_name)
+            conf = probs_1d[idx_val].item()
+            labels_with_conf.append((label_name, conf))
     else:
         # Fallback if id2label is missing
         for idx in predicted_indices:
-            labels.append(str(idx.item()))
+            idx_val = idx.item()
+            conf = probs_1d[idx_val].item()
+            labels_with_conf.append((str(idx_val), conf))
             
-    return labels
+    if confidences:
+        labels_with_conf.sort(key=lambda x: x[1], reverse=True)
+        return labels_with_conf
+    else:
+        return [label for label, _ in labels_with_conf]
