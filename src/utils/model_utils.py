@@ -57,6 +57,7 @@ def predict_labels(text: str, model, tokenizer, device, threshold: float = 0.5) 
         max_length=512,
         padding=True
     ).to(device)
+    if len(inputs) == 512: print("Input is 512, truncating!")
     
     with torch.no_grad():
         outputs = model(**inputs)

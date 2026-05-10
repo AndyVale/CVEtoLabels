@@ -5,6 +5,7 @@ from datetime import datetime
 import pandas as pd
 from tqdm import tqdm
 from utils.model_utils import load_model, predict_labels
+from utils.cvss_utils import generate_cvss_description
 
 
 if __name__ == "__main__":
@@ -13,6 +14,8 @@ if __name__ == "__main__":
                         help="Name of the CSV file in mod_evaluation_data or a full path to it.")
     parser.add_argument("--model", type=str, required=True, 
                         help="Name of a model folder inside 'models' or a full path to it.")
+    parser.add_argument("--include_cvss", action="store_true",
+                        help="If set, concatenates the CVSS description to the vulnerability description.")
     args = parser.parse_args()
 
     # Resolve input CSV path
@@ -50,6 +53,11 @@ if __name__ == "__main__":
     if 'labels' not in df.columns:
         print(f"Error: Column 'labels' not found in {input_csv}")
         exit(1)
+        
+    if args.include_cvss:
+        if 'cvss_vector' not in df.columns:
+            print(f"Error: Column 'cvss_vector' not found in {input_csv}")
+            exit(1)
 
     label_col = 'labels'
     
@@ -59,7 +67,7 @@ if __name__ == "__main__":
     
     # Generate filename based on current time
     timestamp = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-    output_file = os.path.join(output_dir, f"{model_name}_{timestamp}.csv")
+    output_file = os.path.join(output_dir, f"{model_name}_{timestamp}.csv" if not args.include_cvss else f"{model_name}_CVSS_{timestamp}.csv")
     
     print(f"Predicting CVEs from dataset...")
     print(f"Results will be written to {output_file} as they are processed.")
@@ -77,6 +85,15 @@ if __name__ == "__main__":
             if pd.isna(row.get('description')):
                 description = ""
                 
+            if args.include_cvss:
+                cvss_vector = row.get('cvss_vector')
+                if not pd.isna(cvss_vector) and cvss_vector:
+                    try:
+                        cvss_desc = generate_cvss_description(str(cvss_vector))
+                        description = f"{description}\n\n{cvss_desc}".strip()
+                    except Exception:
+                        pass
+                        
             true_cwes = row.get(label_col, []) if label_col else []
             
             if description != "No-info" and description.strip():
