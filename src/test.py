@@ -1,39 +1,79 @@
+import argparse
 import csv
 import os
-import random
-import time
 from datetime import datetime
+import pandas as pd
 from tqdm import tqdm
-from utils.nvd_utils import get_cve_information
 from utils.model_utils import load_model, predict_labels
 
-random.seed(42)
 
 if __name__ == "__main__":
-    model_name = "bert_cwe"
-    print("Loading model...")
-    model, tokenizer, device = load_model(model_name)
+    parser = argparse.ArgumentParser(description="Evaluate CVE to CWE prediction model on a dataset.")
+    parser.add_argument("--input_csv", type=str, required=True, 
+                        help="Name of the CSV file in mod_evaluation_data or a full path to it.")
+    parser.add_argument("--model", type=str, required=True, 
+                        help="Name of a model folder inside 'models' or a full path to it.")
+    args = parser.parse_args()
+
+    # Resolve input CSV path
+    input_arg = args.input_csv
+    if os.path.isabs(input_arg) or os.path.exists(input_arg):
+        input_csv = input_arg
+    else:
+        input_csv = os.path.join("mod_evaluation_data", input_arg)
+        
+    if not os.path.exists(input_csv):
+        print(f"Error: Could not find input CSV file at {input_csv}")
+        exit(1)
+
+    # Resolve model path
+    model_arg = args.model
+    if os.path.isabs(model_arg) or os.path.exists(model_arg):
+        base_dir = os.path.dirname(os.path.abspath(model_arg))
+        model_name = os.path.basename(os.path.abspath(model_arg))
+    else:
+        base_dir = "models"
+        model_name = model_arg
+
+    print(f"Loading model '{model_name}' from '{base_dir}'...")
+    try:
+        model, tokenizer, device = load_model(model_name, base_dir=base_dir)
+    except Exception as e:
+        print(f"Failed to load model: {e}")
+        exit(1)
     
-    # Create the mod_tests directory if it doesn't exist
-    output_dir = "mod_tests"
+    # Read input data
+    print(f"Reading data from {input_csv}...")
+    df = pd.read_csv(input_csv)
+    
+    # Attempt to find the labels column ('labels' or 'cwes')
+    label_col = 'labels' if 'labels' in df.columns else 'cwes' if 'cwes' in df.columns else None
+    
+    # Output directory
+    output_dir = "mod_evaluation_data"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Generate filename based on current time (yy-mm-dd-hh-mm-ss)
+    # Generate filename based on current time
     timestamp = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
     output_file = os.path.join(output_dir, f"{model_name}_{timestamp}.csv")
     
-    print(f"Fetching and predicting 100 random CVEs...")
+    print(f"Predicting CVEs from dataset...")
     print(f"Results will be written to {output_file} as they are processed.")
     
-    # Open file in write mode and keep it open during the loop
+    # Process and write results
     with open(output_file, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["cve_id", "predicted", "groundtruth"])
         writer.writeheader()
         f.flush()
         
-        for _ in tqdm(range(100), desc="Processing CVEs"):
-            time.sleep(7)
-            fetched_cve_id, description, true_cwes = get_cve_information(None)
+        for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing CVEs"):
+            cve_id = row.get('cve_id', 'Unknown')
+            description = str(row.get('description', ''))
+            
+            if pd.isna(row.get('description')):
+                description = ""
+                
+            true_cwes = row.get(label_col, []) if label_col else []
             
             if description != "No-info" and description.strip():
                 predicted_cwes = predict_labels(description, model, tokenizer, device)
@@ -41,11 +81,10 @@ if __name__ == "__main__":
                 predicted_cwes = []
                 
             writer.writerow({
-                "cve_id": fetched_cve_id,
+                "cve_id": cve_id,
                 "predicted": str(predicted_cwes),
                 "groundtruth": str(true_cwes)
             })
-            # Flush after every row so data is saved immediately
             f.flush()
             
     print("Done!")
