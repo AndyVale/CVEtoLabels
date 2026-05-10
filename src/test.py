@@ -47,10 +47,14 @@ if __name__ == "__main__":
     df = pd.read_csv(input_csv)
     
     # Attempt to find the labels column ('labels' or 'cwes')
-    label_col = 'labels' if 'labels' in df.columns else 'cwes' if 'cwes' in df.columns else None
+    if 'labels' not in df.columns:
+        print(f"Error: Column 'labels' not found in {input_csv}")
+        exit(1)
+
+    label_col = 'labels'
     
     # Output directory
-    output_dir = "mod_evaluation_data"
+    output_dir = "mod_tests"
     os.makedirs(output_dir, exist_ok=True)
     
     # Generate filename based on current time

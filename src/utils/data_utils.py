@@ -141,6 +141,10 @@ if __name__ == "__main__":
     df_cve_cvss = create_cvecvss_dataset(TARGET_CVES_CSV, CVE_LISTV5_DIR, CVSS_VERSION)
     
     out_path = f'mod_evaluation_data/cve_cvss_{CVSS_VERSION}.csv'
+
+    df_cve_cvss['labels'] = df_cve_cvss['cwes']
+    df_cve_cvss.drop(columns=['cwes'], inplace=True)
+
     df_cve_cvss.to_csv(out_path, index=False)
     
     print(f"Saved {len(df_cve_cvss)} rows to {out_path}")
