@@ -1,12 +1,26 @@
 import argparse
 import csv
 import os
+import ast
+import random
+import numpy as np
 from datetime import datetime
 import pandas as pd
 from tqdm import tqdm
+from sklearn.model_selection import train_test_split
 from utils.model_utils import load_model, predict_labels
 from utils.cvss_utils import generate_cvss_description
+from utils.evaluation_utils import evaluate_predictions
 
+# --- Configuration ---
+TRAIN_TEST_SPLIT_RATIO = 0.6
+THRESHOLD_SEARCH_RANGE = (0.1, 0.9)
+THRESHOLD_STEP_SIZE = 0.05
+RANDOM_SEED = 42
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate CVE to CWE prediction model on a dataset.")
@@ -18,6 +32,8 @@ if __name__ == "__main__":
                         help="If set, concatenates the CVSS description to the vulnerability description.")
     parser.add_argument("--output_csv", type=str, default=None,
                         help="Optional specific name for the output CSV file.")
+    parser.add_argument("--threshold", type=float, default=None,
+                        help="Optional fixed threshold to use. If provided, hyperparameter tuning is bypassed.")
     args = parser.parse_args()
 
     # Resolve input CSV path
@@ -63,6 +79,84 @@ if __name__ == "__main__":
 
     label_col = 'labels'
     
+    set_seed(RANDOM_SEED)
+    
+    if args.threshold is not None:
+        print(f"Threshold provided explicitly: {args.threshold}. Skipping tuning phase.")
+        test_df = df
+        optimal_threshold = args.threshold
+    else:
+        print("Splitting dataset for hyperparameter tuning...")
+        try:
+            tune_df, test_df = train_test_split(df, train_size=TRAIN_TEST_SPLIT_RATIO, random_state=RANDOM_SEED)
+        except ValueError as e:
+            print(f"Failed to split data: {e}")
+            exit(1)
+            
+        print("Starting hyperparameter tuning on the tuning split...")
+        tune_probs = []
+        tune_groundtruth = []
+        
+        for _, row in tqdm(tune_df.iterrows(), total=len(tune_df), desc="Caching model probabilities"):
+            description = str(row.get('description', ''))
+            if pd.isna(row.get('description')):
+                description = ""
+                
+            if args.include_cvss:
+                cvss_vector = row.get('cvss_vector')
+                if not pd.isna(cvss_vector) and cvss_vector:
+                    try:
+                        cvss_desc = generate_cvss_description(str(cvss_vector))
+                        description = f"{description}\n\n{cvss_desc}".strip()
+                    except Exception:
+                        pass
+                        
+            true_cwes = row.get(label_col, []) if label_col else []
+            if isinstance(true_cwes, str):
+                try:
+                    true_cwes = ast.literal_eval(true_cwes)
+                except Exception:
+                    true_cwes = []
+            tune_groundtruth.append(true_cwes)
+            
+            if description != "No-info" and description.strip():
+                # Get all labels and their raw probabilities
+                probs = predict_labels(description, model, tokenizer, device, threshold=0.0, confidences=True)
+            else:
+                probs = []
+            tune_probs.append(probs)
+            
+        print("Evaluating candidate thresholds...")
+        best_f1 = -1.0
+        optimal_threshold = None
+        
+        # Adding a small epsilon to the upper bound to ensure the last step is included
+        candidate_thresholds = np.arange(
+            THRESHOLD_SEARCH_RANGE[0], 
+            THRESHOLD_SEARCH_RANGE[1] + (THRESHOLD_STEP_SIZE / 2), 
+            THRESHOLD_STEP_SIZE
+        )
+        
+        for candidate in candidate_thresholds:
+            candidate_preds = []
+            for probs in tune_probs:
+                pred_labels = [label for label, conf in probs if conf >= candidate]
+                candidate_preds.append(pred_labels)
+                
+            metrics = evaluate_predictions(tune_groundtruth, candidate_preds)
+            micro_f1 = metrics.get('Micro F1-Score', 0.0)
+            
+            if micro_f1 > best_f1:
+                print(f"New best threshold: {candidate} (Micro F1-Score: {micro_f1:.4f})")
+                best_f1 = micro_f1
+                optimal_threshold = candidate
+                
+        if optimal_threshold is None:
+            print("Warning: Could not find an optimal threshold. Falling back to default 0.5.")
+            optimal_threshold = 0.5
+        else:
+            print(f"Optimal threshold found: {optimal_threshold:.2f} (Micro F1-Score: {best_f1:.4f})")
+    
     # Output directory
     output_dir = "mod_tests"
     os.makedirs(output_dir, exist_ok=True)
@@ -84,7 +178,7 @@ if __name__ == "__main__":
         writer.writeheader()
         f.flush()
         
-        for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing CVEs"):
+        for _, row in tqdm(test_df.iterrows(), total=len(test_df), desc="Processing final evaluation"):
             cve_id = row.get('cve_id', 'Unknown')
             description = str(row.get('description', ''))
             
@@ -101,9 +195,14 @@ if __name__ == "__main__":
                         pass
                         
             true_cwes = row.get(label_col, []) if label_col else []
+            if isinstance(true_cwes, str):
+                try:
+                    true_cwes = ast.literal_eval(true_cwes)
+                except Exception:
+                    pass
             
             if description != "No-info" and description.strip():
-                predicted_cwes = predict_labels(description, model, tokenizer, device, threshold = 0.7)
+                predicted_cwes = predict_labels(description, model, tokenizer, device, threshold=optimal_threshold)
             else:
                 predicted_cwes = []
                 
