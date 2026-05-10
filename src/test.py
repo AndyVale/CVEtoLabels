@@ -16,6 +16,8 @@ if __name__ == "__main__":
                         help="Name of a model folder inside 'models' or a full path to it.")
     parser.add_argument("--include_cvss", action="store_true",
                         help="If set, concatenates the CVSS description to the vulnerability description.")
+    parser.add_argument("--output_csv", type=str, default=None,
+                        help="Optional specific name for the output CSV file.")
     args = parser.parse_args()
 
     # Resolve input CSV path
@@ -65,9 +67,13 @@ if __name__ == "__main__":
     output_dir = "mod_tests"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Generate filename based on current time
-    timestamp = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-    output_file = os.path.join(output_dir, f"{model_name}_{timestamp}.csv" if not args.include_cvss else f"{model_name}_CVSS_{timestamp}.csv")
+    if args.output_csv:
+        output_name = args.output_csv if args.output_csv.endswith('.csv') else f"{args.output_csv}.csv"
+        output_file = os.path.join(output_dir, output_name)
+    else:
+        # Generate filename based on current time
+        timestamp = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+        output_file = os.path.join(output_dir, f"{model_name}_{timestamp}.csv" if not args.include_cvss else f"{model_name}_CVSS_{timestamp}.csv")
     
     print(f"Predicting CVEs from dataset...")
     print(f"Results will be written to {output_file} as they are processed.")
@@ -90,14 +96,14 @@ if __name__ == "__main__":
                 if not pd.isna(cvss_vector) and cvss_vector:
                     try:
                         cvss_desc = generate_cvss_description(str(cvss_vector))
-                        description = f"{description}\n\n{cvss_desc}".strip()
+                        description = f"{cvss_desc}\n\n{description}".strip()
                     except Exception:
                         pass
                         
             true_cwes = row.get(label_col, []) if label_col else []
             
             if description != "No-info" and description.strip():
-                predicted_cwes = predict_labels(description, model, tokenizer, device)
+                predicted_cwes = predict_labels(description, model, tokenizer, device, threshold = 0.7)
             else:
                 predicted_cwes = []
                 
