@@ -1,4 +1,10 @@
+# Allow READMEs to inform users about the project
+!models/README.md
+!mod_tests/README.md
+!mod_evaluation_data/README.md
+
 models
 mod_tests
+mod_evaluation_data
 
 __pycache__

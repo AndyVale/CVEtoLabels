@@ -4,8 +4,8 @@ import random
 import time
 from datetime import datetime
 from tqdm import tqdm
-from nvd_utils import get_cve_information
-from model_utils import load_model, predict_labels
+from utils.nvd_utils import get_cve_information
+from utils.model_utils import load_model, predict_labels
 
 random.seed(42)
 

@@ -2,16 +2,15 @@
 
 ## Context
 
-Main entrypoint: `src/cve_to_cwe.py`
-Goal: evaluate models that map a CVE (ID/description) to one or more labels (e.g., CWE classes).
+Goal: Evaluate models that map a CVE (ID/description) to one or more labels (e.g., CWE classes).
 
 ## Structure
 
-* `src/cve_to_cwe.py` — main script for single CVE analysis
-* `src/nvd_utils.py` — NVD API utilities
-* `src/model_utils.py` — ML model utilities
-* `src/test.py` — batch testing script
-
+* **`src/test.py`** — Main entrypoint for batch testing and evaluation of random CVEs.
+* **`src/utils/`**:
+    * `nvd_utils.py` — NVD API utilities.
+    * `model_utils.py` — ML model utilities.
+    * `cvss_utils.py` — CVSS score utilities.
 
 ## Dev
 
