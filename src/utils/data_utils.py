@@ -66,48 +66,37 @@ def get_cve_file_path(base_dir, cve_id):
 
 def create_cvecvss_dataset(target_cves_csv, cvelist_dir, cvss_version='cvssV3_1'):
     """
-    target_cves_csv: Path to the CSV file acting as a list of targeted CVEs (must contain 'cve_id').
+    Enriches an existing CSV with a CVSS vector column looked up from cvelistV5.
+
+    target_cves_csv: Path to the CSV file (must contain a 'CVE_ID' column). All original columns are preserved.
     cvelist_dir: Path to cveListV5 directory.
     cvss_version: Version of CVSS data to be extracted (default: cvssV3_1).
-    
-    Returns a pandas dataframe containing: cve_id, description, CWEs, and the requested CVSS vector.
+
+    Saves the enriched CSV as <original_name>_<cvss_version>.csv and returns the dataframe.
     """
 
     target_df = pd.read_csv(target_cves_csv)
-    wanted_cve_ids = set(target_df['CVE_ID'].dropna().tolist())
+    cvss_keys = ['cvssV2_0', 'cvssV3_0', 'cvssV3_1', 'cvssV4_0']
 
-    records = []
-    cvss_keys =['cvssV2_0', 'cvssV3_0', 'cvssV3_1', 'cvssV4_0']
-    
-    for cve_id in tqdm(wanted_cve_ids, desc=f'Processing {cvss_version} Data'):
+    # Build a lookup: CVE_ID -> cvss vector string
+    cvss_lookup = {}
+    for cve_id in tqdm(target_df['CVE_ID'].dropna().unique(), desc=f'Processing {cvss_version} Data'):
         file_path = get_cve_file_path(cvelist_dir, cve_id)
         if not file_path:
+            cvss_lookup[cve_id] = "CVSS_NOT_AVAILABLE"
             continue
-            
-        with open(file_path, 'r', encoding='utf-8') as f:
-            try:
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 containers = data.get('containers', {})
                 cna_container = containers.get('cna', {})
-                adp_containers = containers.get('adp',[])
+                adp_containers = containers.get('adp', [])
 
-                # --- 1. Description Extraction ---
-                description = extract_description(containers)
-
-                # --- 2. CWE Extraction ---
-                cna_cwes = extract_cwes(cna_container)
-                adp_cwes =[]
-                for adp in adp_containers:
-                    adp_cwes.extend(extract_cwes(adp))
-                
-                # Combine them (removing duplicates via set)
-                all_cwes = list(set(cna_cwes + adp_cwes))
-
-                # --- 3. CVSS Extraction ---
                 cvss_data = {k: None for k in cvss_keys}
-                
+
                 def extract_vectors(container):
-                    for metric in container.get('metrics',[]):
+                    for metric in container.get('metrics', []):
                         for version in cvss_keys:
                             if version in metric and not cvss_data[version]:
                                 cvss_data[version] = metric[version].get('vectorString')
@@ -116,36 +105,25 @@ def create_cvecvss_dataset(target_cves_csv, cvelist_dir, cvss_version='cvssV3_1'
                     extract_vectors(adp)
                 extract_vectors(cna_container)
 
-                target_vector = cvss_data.get(cvss_version)
-                
-                # Skip appending if the requested CVSS version isn't present for this CVE
-                if target_vector is None:
-                    target_vector = "CVSS_NOT_AVAILABLE"
+                vector = cvss_data.get(cvss_version)
+                cvss_lookup[cve_id] = vector if vector is not None else "CVSS_NOT_AVAILABLE"
+        except Exception:
+            cvss_lookup[cve_id] = "CVSS_NOT_AVAILABLE"
 
-                records.append({
-                    'cve_id': cve_id,
-                    'description': description,
-                    'cwes': all_cwes,
-                    'cvss_vector': target_vector
-                })
-            except Exception:
-                continue
-                
-    return pd.DataFrame(records)
+    # Map the lookup onto the original dataframe, preserving all columns and rows
+    target_df['cvss_vector'] = target_df['CVE_ID'].map(cvss_lookup).fillna("CVSS_NOT_AVAILABLE")
+
+    # Save with naming convention: originalname_cvssVersion.csv
+    base, ext = os.path.splitext(target_cves_csv)
+    out_path = f"{base}_{cvss_version}{ext}"
+    target_df.to_csv(out_path, index=False)
+    print(f"Saved {len(target_df)} rows to {out_path}")
+
+    return target_df
 
 if __name__ == "__main__":
     CVE_LISTV5_DIR = 'mod_evaluation_data/cvelistV5'
     TARGET_CVES_CSV = 'mod_evaluation_data/data_cwe_all.csv'
     CVSS_VERSION = 'cvssV3_1'
 
-    df_cve_cvss = create_cvecvss_dataset(TARGET_CVES_CSV, CVE_LISTV5_DIR, CVSS_VERSION)
-    
-    out_path = f'mod_evaluation_data/data_cwe_all_sep_{CVSS_VERSION}.csv'
-
-    df_cve_cvss['labels'] = df_cve_cvss['cwes']
-    df_cve_cvss.drop(columns=['cwes'], inplace=True)
-
-    df_cve_cvss.to_csv(out_path, index=False)
-    print(len(df_cve_cvss))
-    
-    print(f"Saved {len(df_cve_cvss)} rows to {out_path}")
+    create_cvecvss_dataset(TARGET_CVES_CSV, CVE_LISTV5_DIR, CVSS_VERSION)

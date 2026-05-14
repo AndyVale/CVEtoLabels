@@ -60,26 +60,45 @@ def generate_cvss_description(vector, metrics_dict=CVSS3_1, cve=""):
 
 def process_dataset_with_cvss(df):
     """
-    Given a DataFrame containing 'description', 'cvss_vector', and 'cve_id',
+    Given a DataFrame containing 'description', 'cvss_vector', and 'CVE_ID',
     generates the CVSS description and concatenates it to the original description.
+    Rows with CVSS_NOT_AVAILABLE keep their original description unchanged.
     """
-    cvss_descs = df.apply(lambda row: generate_cvss_description(row['cvss_vector'], cve=row['cve_id']), axis=1)
-    df['description'] = df['description'] + "\\n\\n" + cvss_descs
+    cvss_descs = df.apply(lambda row: generate_cvss_description(row['cvss_vector'], cve=row['CVE_ID']), axis=1)
+    # Only append when there is actually a CVSS description
+    df['description'] = df.apply(
+        lambda row: row['description'] + "\\n\\n" + cvss_descs[row.name] if cvss_descs[row.name] else row['description'],
+        axis=1
+    )
+    return df
+
+def enrich_description_with_cvss(input_csv='mod_evaluation_data/data_cwe_all_cvssV3_1.csv'):
+    """
+    Reads a CSV enriched with a 'cvss_vector' column, concatenates the generated
+    CVSS natural-language description with the original 'description' column,
+    drops the 'cvss_vector' column, and saves the result.
+
+    Output file: <original_name> with '_cvssV3_1' replaced by '_cvssV3.1' (or appends '_cvss_desc').
+    """
+    import os
+
+    df = pd.read_csv(input_csv)
+
+    print(f"Read {len(df)} rows from {input_csv}")
+    print("Generating and concatenating CVSS descriptions...")
+    df = process_dataset_with_cvss(df)
+
+    # Drop the raw vector column
+    df.drop(columns=['cvss_vector'], inplace=True)
+
+    # Build output path
+    base, ext = os.path.splitext(input_csv)
+    out_path = base.replace('_cvssV3_1', '_cvssV3.1') + ext if '_cvssV3_1' in base else f"{base}_cvss_desc{ext}"
+
+    df.to_csv(out_path, index=False)
+    print(f"Saved {len(df)} rows to {out_path}")
+
     return df
 
 if __name__ == "__main__":
-    input_path = "mod_evaluation_data/data_cwe_all_sep_cvssV3_1.csv"
-    output_path = "mod_evaluation_data/data_cwe_all_cvssV3.1.csv"
-    
-    print(f"Reading data from {input_path}...")
-    df = pd.read_csv(input_path)
-    
-    print("Processing CVSS descriptions...")
-    df = process_dataset_with_cvss(df)
-    
-    print("Selecting relevant columns...")
-    df = df[['cve_id', 'description', 'labels']]
-    
-    print(f"Saving dataset to {output_path} the dataset contains {len(df)} rows...")
-    df.to_csv(output_path, index=False)
-    print("Dataset successfully saved.")
+    enrich_description_with_cvss()
