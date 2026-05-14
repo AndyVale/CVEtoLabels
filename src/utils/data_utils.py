@@ -74,7 +74,7 @@ def create_cvecvss_dataset(target_cves_csv, cvelist_dir, cvss_version='cvssV3_1'
     """
 
     target_df = pd.read_csv(target_cves_csv)
-    wanted_cve_ids = set(target_df['cve_id'].dropna().tolist())
+    wanted_cve_ids = set(target_df['CVE_ID'].dropna().tolist())
 
     records = []
     cvss_keys =['cvssV2_0', 'cvssV3_0', 'cvssV3_1', 'cvssV4_0']
@@ -120,7 +120,7 @@ def create_cvecvss_dataset(target_cves_csv, cvelist_dir, cvss_version='cvssV3_1'
                 
                 # Skip appending if the requested CVSS version isn't present for this CVE
                 if target_vector is None:
-                    continue
+                    target_vector = "CVSS_NOT_AVAILABLE"
 
                 records.append({
                     'cve_id': cve_id,
@@ -135,16 +135,17 @@ def create_cvecvss_dataset(target_cves_csv, cvelist_dir, cvss_version='cvssV3_1'
 
 if __name__ == "__main__":
     CVE_LISTV5_DIR = 'mod_evaluation_data/cvelistV5'
-    TARGET_CVES_CSV = 'mod_evaluation_data/test.csv'
+    TARGET_CVES_CSV = 'mod_evaluation_data/data_cwe_all.csv'
     CVSS_VERSION = 'cvssV3_1'
 
     df_cve_cvss = create_cvecvss_dataset(TARGET_CVES_CSV, CVE_LISTV5_DIR, CVSS_VERSION)
     
-    out_path = f'mod_evaluation_data/cve_cvss_{CVSS_VERSION}.csv'
+    out_path = f'mod_evaluation_data/data_cwe_all_sep_{CVSS_VERSION}.csv'
 
     df_cve_cvss['labels'] = df_cve_cvss['cwes']
     df_cve_cvss.drop(columns=['cwes'], inplace=True)
 
     df_cve_cvss.to_csv(out_path, index=False)
+    print(len(df_cve_cvss))
     
     print(f"Saved {len(df_cve_cvss)} rows to {out_path}")

@@ -2,21 +2,25 @@ import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 
-def evaluate_predictions(groundtruth_list, predicted_list):
+def evaluate_predictions(groundtruth_list, predicted_list, classes=None):
     """
     Evaluates multi-label predictions against groundtruth lists.
     
     Args:
         groundtruth_list: List of lists of true labels.
         predicted_list: List of lists of predicted labels.
+        classes: Optional list of all possible classes to ensure consistent label space.
         
     Returns:
         Dictionary containing Exact Match and Precision, Recall, F1 for micro, macro, samples.
     """
-    mlb = MultiLabelBinarizer()
-    
-    # Fit the binarizer on the union of all labels to ensure dimensions match
-    mlb.fit(pd.concat([pd.Series(groundtruth_list), pd.Series(predicted_list)]))
+    if classes is not None:
+        mlb = MultiLabelBinarizer(classes=classes)
+        mlb.fit(classes)
+    else:
+        mlb = MultiLabelBinarizer()
+        # Fit the binarizer on the union of all labels to ensure dimensions match
+        mlb.fit(pd.concat([pd.Series(groundtruth_list), pd.Series(predicted_list)]))
     
     y_true = mlb.transform(groundtruth_list)
     y_pred = mlb.transform(predicted_list)

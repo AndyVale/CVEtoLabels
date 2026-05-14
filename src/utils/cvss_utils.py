@@ -1,3 +1,5 @@
+import pandas as pd
+
 CVSS3_1 = {
     "AV": {
         "N": "is reachable from any remote network location",
@@ -40,6 +42,8 @@ CVSS3_1 = {
 }
 
 def generate_cvss_description(vector, metrics_dict=CVSS3_1, cve=""):
+    if vector == "CVSS_NOT_AVAILABLE":
+        return ""
     v = dict(item.split(':') for item in vector.split('/')[1:])
     cve_str = f" {cve}" if cve else ""
     
@@ -48,8 +52,34 @@ def generate_cvss_description(vector, metrics_dict=CVSS3_1, cve=""):
     desc = (f"The vulnerability{cve_str} {metrics_dict['AV'][v['AV']]}. "
             f"{metrics_dict['AC'][v['AC']]}. "
             f"Exploitation {metrics_dict['PR'][v['PR']]}{conj}{metrics_dict['UI'][v['UI']]}. "
-            f"{metrics_dict['S'][v['S']]}.\n\n"
+            f"{metrics_dict['S'][v['S']]}.\\n"
             f"Regarding the impact on the system: it results in a {metrics_dict['C'][v['C']]}, "
             f"a {metrics_dict['I'][v['I']]}, and {metrics_dict['A'][v['A']]}.")
     
     return desc
+
+def process_dataset_with_cvss(df):
+    """
+    Given a DataFrame containing 'description', 'cvss_vector', and 'cve_id',
+    generates the CVSS description and concatenates it to the original description.
+    """
+    cvss_descs = df.apply(lambda row: generate_cvss_description(row['cvss_vector'], cve=row['cve_id']), axis=1)
+    df['description'] = df['description'] + "\\n\\n" + cvss_descs
+    return df
+
+if __name__ == "__main__":
+    input_path = "mod_evaluation_data/data_cwe_all_sep_cvssV3_1.csv"
+    output_path = "mod_evaluation_data/data_cwe_all_cvssV3.1.csv"
+    
+    print(f"Reading data from {input_path}...")
+    df = pd.read_csv(input_path)
+    
+    print("Processing CVSS descriptions...")
+    df = process_dataset_with_cvss(df)
+    
+    print("Selecting relevant columns...")
+    df = df[['cve_id', 'description', 'labels']]
+    
+    print(f"Saving dataset to {output_path} the dataset contains {len(df)} rows...")
+    df.to_csv(output_path, index=False)
+    print("Dataset successfully saved.")

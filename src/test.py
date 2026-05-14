@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
     print(f"Loading model '{model_name}' from '{base_dir}'...")
     try:
-        model, tokenizer, device = load_model(model_name, base_dir=base_dir)
+        model, tokenizer, device, mlb, config = load_model(model_name, base_dir=base_dir)
     except Exception as e:
         print(f"Failed to load model: {e}")
         exit(1)
@@ -119,11 +119,8 @@ if __name__ == "__main__":
                     true_cwes = []
             tune_groundtruth.append(true_cwes)
             
-            if description != "No-info" and description.strip():
-                # Get all labels and their raw probabilities
-                probs = predict_labels(description, model, tokenizer, device, threshold=0.0, confidences=True)
-            else:
-                probs = []
+            # Get all labels and their raw probabilities
+            probs = predict_labels(description, model, tokenizer, device, mlb=mlb, max_len=config.get('max_len', 512), threshold=0.0, confidences=True)
             tune_probs.append(probs)
             
         print("Evaluating candidate thresholds...")
@@ -143,7 +140,7 @@ if __name__ == "__main__":
                 pred_labels = [label for label, conf in probs if conf >= candidate]
                 candidate_preds.append(pred_labels)
                 
-            metrics = evaluate_predictions(tune_groundtruth, candidate_preds)
+            metrics = evaluate_predictions(tune_groundtruth, candidate_preds, classes=mlb.classes_.tolist())
             micro_f1 = metrics.get('Micro F1-Score', 0.0)
             
             if micro_f1 > best_f1:
@@ -201,10 +198,7 @@ if __name__ == "__main__":
                 except Exception:
                     pass
             
-            if description != "No-info" and description.strip():
-                predicted_cwes = predict_labels(description, model, tokenizer, device, threshold=optimal_threshold)
-            else:
-                predicted_cwes = []
+            predicted_cwes = predict_labels(description, model, tokenizer, device, mlb=mlb, max_len=config.get('max_len', 512), threshold=optimal_threshold)
                 
             writer.writerow({
                 "cve_id": cve_id,
