@@ -69,6 +69,9 @@ def predict_labels(text: str, model, tokenizer, device, mlb, max_len=512, thresh
         padding=True
     ).to(device)
     
+    if len(inputs) == max_len:
+        print(f"Text is too long for model!")
+
     with torch.no_grad():
         outputs = model(**inputs)
         logits = outputs.logits
